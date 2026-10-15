@@ -2,6 +2,27 @@
   "name": "personal-assistant",
   "version": "0.1.0",
   "description": "Private, fully local personal assistant: reads WhatsApp, Telegram, Gmail and Google Calendar and summarises them with an AI model running on your own computer",
+  "keywords": [
+    "personal-assistant",
+    "ollama",
+    "local-llm",
+    "whatsapp",
+    "telegram",
+    "gmail",
+    "google-calendar",
+    "privacy"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Atul1242/personal-assistant.git"
+  },
+  "license": "MIT",
+  "author": "Atul1242",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "digest": "tsx src/cli.ts digest",
@@ -11,26 +32,17 @@
     "check:whatsapp": "tsx src/cli.ts check:whatsapp",
     "typecheck": "tsc --noEmit"
   },
-  "author": "Atul1242",
-  "license": "MIT",
-  "type": "module",
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
     "dotenv": "^18.0.8",
     "googleapis": "^186.0.0",
-    "node-cron": "^4.6.0",
     "ollama": "^0.6.4",
     "telegram": "^2.26.22",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "@types/node-cron": "^3.0.11",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
-  },
-  "private": true,
-  "engines": {
-    "node": ">=22.13"
   }
 }

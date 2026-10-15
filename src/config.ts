@@ -29,7 +29,6 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_OWNER_CHAT_ID: z.string().optional(),
 
-  DIGEST_SCHEDULE: z.string().default(""),
   TIMEZONE: z.string().default("Asia/Kolkata"),
   USER_NAME: z.string().default(""),
 });

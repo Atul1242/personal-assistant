@@ -43,7 +43,7 @@ export async function loginTelegramInteractive(): Promise<{ session: string; use
 }
 
 /** Connects with the saved session. Caller must call destroy() (disconnect() leaves a ping loop running). */
-export async function connectTelegram(): Promise<TelegramClient> {
+async function connectTelegram(): Promise<TelegramClient> {
   if (!config.TELEGRAM_SESSION) throw new Error("Telegram not connected. Run: npm run auth:telegram");
   const client = makeClient(config.TELEGRAM_SESSION);
   await client.connect();

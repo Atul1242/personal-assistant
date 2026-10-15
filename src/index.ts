@@ -1,4 +1,3 @@
-import cron from "node-cron";
 import { listenForCommands, type DigestRequest } from "./bot.js";
 import { config } from "./config.js";
 import { startWhatsAppWatcher } from "./connectors/whatsapp.js";
@@ -34,12 +33,6 @@ async function main(): Promise<void> {
 
   // Catches WhatsApp notifications before you open the chat, but only while this window is open
   if (config.ENABLE_WHATSAPP) startWhatsAppWatcher();
-
-  // Optional automatic digests (off unless DIGEST_SCHEDULE is set in .env)
-  for (const expr of config.DIGEST_SCHEDULE.split(",").map((s) => s.trim()).filter(Boolean)) {
-    cron.schedule(expr, () => void digestOnce(), { timezone: config.TIMEZONE });
-    console.log(`[schedule] automatic digest at "${expr}"`);
-  }
 
   await sendViaBot("Assistant is on. Send /digest when you want a summary, or /help for options.").catch(() => {});
   console.log("Press Ctrl+C or send /stop to the bot to turn it off.");
