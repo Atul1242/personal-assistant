@@ -42,7 +42,7 @@ async function collect(since: Date): Promise<Collected> {
   return data;
 }
 
-/** Collects everything new since the last digest, summarises it with Claude and sends it to you. */
+/** Collects everything new since the last digest, summarises it with the local AI model and sends it to you. */
 export async function runDigest(): Promise<string> {
   const state = readJson<State>(paths.state, {});
   const startedAt = new Date();

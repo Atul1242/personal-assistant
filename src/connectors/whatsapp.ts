@@ -1,144 +1,133 @@
-import type { Boom } from "@hapi/boom";
-import makeWASocket, {
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  isJidBroadcast,
-  isJidGroup,
-  isJidNewsletter,
-  useMultiFileAuthState,
-  type WAMessage,
-  type WASocket,
-} from "baileys";
-import pino from "pino";
-import qrcode from "qrcode-terminal";
-import { paths } from "../config.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { config, paths } from "../config.js";
 import { readJson, writeJson } from "../store.js";
 import type { InboxItem } from "../types.js";
 
 /**
- * WhatsApp has no official API for personal accounts. This uses Baileys, which connects as a
- * "Linked device" (like WhatsApp Web). Messages are buffered locally while `npm start` is running,
- * and each digest reads from that buffer.
+ * WhatsApp without touching WhatsApp's servers.
+ *
+ * WhatsApp has no official API for personal accounts, and unofficial clients risk getting your
+ * number restricted. Instead, this reads the notifications the official WhatsApp Desktop app
+ * shows on Windows. Windows keeps them in a local database (wpndatabase.db); we poll it and
+ * buffer new WhatsApp notifications in data/. WhatsApp can't see or detect any of this.
+ *
+ * Limits: only chats that produce notifications are captured (muted chats aren't), and
+ * WhatsApp Desktop must be running with message previews turned on.
  */
 
 interface StoredMessage {
+  id: number;
   chat: string;
-  group?: string;
-  from: string;
   text: string;
   timestamp: string;
 }
 
 const KEEP_DAYS = 3;
-const groupNames = new Map<string, string>();
+const WINDOWS_EPOCH_OFFSET_MS = 11644473600000; // FILETIME (1601) -> Unix epoch (1970)
+const NOTIFICATION_DB = path.join(
+  process.env.LOCALAPPDATA ?? "",
+  "Microsoft",
+  "Windows",
+  "Notifications",
+  "wpndatabase.db",
+);
 
-function extractText(msg: WAMessage): string | undefined {
-  const m = msg.message;
-  if (!m) return undefined;
-  return (
-    m.conversation ??
-    m.extendedTextMessage?.text ??
-    m.imageMessage?.caption ??
-    m.videoMessage?.caption ??
-    m.documentMessage?.caption ??
-    (m.imageMessage ? "[photo]" : undefined) ??
-    (m.audioMessage ? "[voice note]" : undefined) ??
-    (m.documentMessage ? `[document: ${m.documentMessage.fileName ?? "file"}]` : undefined) ??
-    undefined
-  )?.trim();
+function decodeXml(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&");
 }
 
-async function groupName(sock: WASocket, jid: string): Promise<string> {
-  const cached = groupNames.get(jid);
-  if (cached) return cached;
+/** Pulls the <text> lines out of a toast's XML payload: first is the chat name, the rest is the message. */
+function parseToast(xml: string): { chat: string; text: string } | undefined {
+  const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((m) => decodeXml(m[1]).trim()).filter(Boolean);
+  if (texts.length < 2) return undefined;
+  return { chat: texts[0], text: texts.slice(1).join(" ") };
+}
+
+/** Reads WhatsApp notifications currently held by Windows. The live DB is locked, so we read a copy. */
+function readNotificationDb(): StoredMessage[] {
+  if (process.platform !== "win32") throw new Error("WhatsApp reading needs Windows with the WhatsApp Desktop app.");
+  if (!fs.existsSync(NOTIFICATION_DB)) throw new Error("Windows notification database not found.");
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pa-wpn-"));
   try {
-    const meta = await sock.groupMetadata(jid);
-    groupNames.set(jid, meta.subject);
-    return meta.subject;
-  } catch {
-    return "a group";
+    const copy = path.join(dir, "wpn.db");
+    fs.copyFileSync(NOTIFICATION_DB, copy);
+    for (const ext of ["-wal", "-shm"]) {
+      if (fs.existsSync(NOTIFICATION_DB + ext)) fs.copyFileSync(NOTIFICATION_DB + ext, copy + ext);
+    }
+
+    const db = new DatabaseSync(copy);
+    try {
+      const rows = db
+        .prepare(
+          `SELECT n.Id AS id,
+                  (n.ArrivalTime / 10000) - ${WINDOWS_EPOCH_OFFSET_MS} AS arrivedMs,
+                  n.Payload AS payload
+             FROM Notification n
+             JOIN NotificationHandler h ON h.RecordId = n.HandlerId
+            WHERE h.PrimaryId LIKE '%WhatsApp%' AND n.Type = 'toast'`,
+        )
+        .all() as Array<{ id: number; arrivedMs: number; payload: Uint8Array }>;
+
+      return rows.flatMap((r) => {
+        const parsed = parseToast(Buffer.from(r.payload).toString("utf8"));
+        return parsed ? [{ id: r.id, ...parsed, timestamp: new Date(r.arrivedMs).toISOString() }] : [];
+      });
+    } finally {
+      db.close();
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
-function saveMessages(newOnes: StoredMessage[]): void {
+/** Copies any new WhatsApp notifications into the local buffer. Returns how many were added. */
+export function captureWhatsApp(): number {
   const cutoff = Date.now() - KEEP_DAYS * 86400_000;
-  const all = readJson<StoredMessage[]>(paths.whatsappMessages, [])
-    .concat(newOnes)
-    .filter((m) => new Date(m.timestamp).getTime() >= cutoff);
-  writeJson(paths.whatsappMessages, all);
+  const stored = readJson<StoredMessage[]>(paths.whatsappMessages, []);
+  const seen = new Set(stored.map((m) => m.id));
+  const fresh = readNotificationDb().filter((m) => !seen.has(m.id));
+
+  const all = stored.concat(fresh).filter((m) => new Date(m.timestamp).getTime() >= cutoff);
+  if (fresh.length || all.length !== stored.length) writeJson(paths.whatsappMessages, all);
+  return fresh.length;
 }
 
-interface StartOptions {
-  /** Resolve once connected (used by the one-time QR login). */
-  onOpen?: () => void;
+/**
+ * Polls in the background. Notifications disappear from Windows once you open the chat or
+ * dismiss them, so polling often catches them before that.
+ */
+export function startWhatsAppWatcher(): void {
+  const tick = () => {
+    try {
+      const added = captureWhatsApp();
+      if (added) console.log(`[whatsapp] captured ${added} new message(s)`);
+    } catch (err) {
+      console.error("[whatsapp]", err instanceof Error ? err.message : err);
+    }
+  };
+  tick();
+  setInterval(tick, config.WHATSAPP_POLL_SECONDS * 1000);
+  console.log(`[whatsapp] watching WhatsApp Desktop notifications every ${config.WHATSAPP_POLL_SECONDS}s`);
 }
 
-export async function startWhatsApp(opts: StartOptions = {}): Promise<WASocket> {
-  const { state, saveCreds } = await useMultiFileAuthState(paths.whatsappAuth);
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: "silent" }),
-    markOnlineOnConnect: false, // don't show you as "online" or send read receipts
-    syncFullHistory: false,
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      console.log("\nScan this QR in WhatsApp -> Settings -> Linked devices -> Link a device:\n");
-      qrcode.generate(qr, { small: true });
-    }
-    if (connection === "open") {
-      console.log("[whatsapp] connected");
-      opts.onOpen?.();
-    }
-    if (connection === "close") {
-      const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
-      if (code === DisconnectReason.loggedOut) {
-        console.error("[whatsapp] logged out. Delete data/whatsapp-auth and run: npm run auth:whatsapp");
-      } else {
-        console.log(`[whatsapp] connection closed (${code ?? "unknown"}), reconnecting...`);
-        setTimeout(() => void startWhatsApp(opts), 3000);
-      }
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-    const stored: StoredMessage[] = [];
-    for (const msg of messages) {
-      const jid = msg.key.remoteJid;
-      if (!jid || msg.key.fromMe) continue;
-      if (isJidBroadcast(jid) || isJidNewsletter(jid)) continue; // skip status updates and channels
-      const text = extractText(msg);
-      if (!text) continue;
-      const isGroup = Boolean(isJidGroup(jid));
-      stored.push({
-        chat: jid,
-        group: isGroup ? await groupName(sock, jid) : undefined,
-        from: msg.pushName ?? jid.split("@")[0],
-        text,
-        timestamp: new Date(Number(msg.messageTimestamp ?? Date.now() / 1000) * 1000).toISOString(),
-      });
-    }
-    if (stored.length) saveMessages(stored);
-  });
-
-  return sock;
-}
-
-/** Messages buffered since `since` by the running listener. */
+/** Buffered messages since `since` (also grabs anything currently in the notification centre). */
 export function readWhatsAppSince(since: Date): InboxItem[] {
+  captureWhatsApp();
   return readJson<StoredMessage[]>(paths.whatsappMessages, [])
     .filter((m) => new Date(m.timestamp) >= since)
     .map((m) => ({
       source: "whatsapp" as const,
-      from: m.from,
-      title: m.group,
+      from: m.chat,
       text: m.text,
       timestamp: new Date(m.timestamp),
     }));

@@ -1,7 +1,9 @@
 import { authorizeGoogleInteractive } from "./connectors/google-auth.js";
 import { loginTelegramInteractive } from "./connectors/telegram.js";
-import { startWhatsApp } from "./connectors/whatsapp.js";
+import { captureWhatsApp } from "./connectors/whatsapp.js";
 import { runDigest } from "./digest.js";
+import { pullModel } from "./summarizer.js";
+import { config } from "./config.js";
 
 const command = process.argv[2];
 
@@ -24,15 +26,21 @@ async function main(): Promise<void> {
       break;
     }
 
-    case "auth:whatsapp":
-      await new Promise<void>((resolve) => void startWhatsApp({ onOpen: resolve }));
-      console.log("WhatsApp linked. Credentials saved to data/whatsapp-auth");
-      // Give Baileys a moment to flush credentials before exiting
-      await new Promise((r) => setTimeout(r, 3000));
+    case "setup:model":
+      console.log(`Downloading local AI model ${config.OLLAMA_MODEL} (one time, a few GB)...`);
+      await pullModel();
+      console.log("Model ready.");
       break;
 
+    case "check:whatsapp": {
+      const added = captureWhatsApp();
+      console.log(`Read Windows notifications: ${added} new WhatsApp message(s) captured.`);
+      console.log("If this stays 0 after someone messages you, check the WhatsApp section of the README.");
+      break;
+    }
+
     default:
-      console.log("Usage: tsx src/cli.ts <digest | auth:google | auth:telegram | auth:whatsapp>");
+      console.log("Usage: tsx src/cli.ts <digest | setup:model | auth:google | auth:telegram | check:whatsapp>");
       process.exitCode = 1;
   }
 }

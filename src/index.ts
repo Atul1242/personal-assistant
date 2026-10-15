@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { listenForCommands } from "./bot.js";
 import { config } from "./config.js";
-import { startWhatsApp } from "./connectors/whatsapp.js";
+import { startWhatsAppWatcher } from "./connectors/whatsapp.js";
 import { runDigest } from "./digest.js";
 
 let running = false;
@@ -21,7 +21,7 @@ async function digestOnce(): Promise<void> {
 async function main(): Promise<void> {
   console.log("Personal assistant starting...");
 
-  if (config.ENABLE_WHATSAPP) await startWhatsApp();
+  if (config.ENABLE_WHATSAPP) startWhatsAppWatcher();
 
   for (const expr of config.DIGEST_SCHEDULE.split(",").map((s) => s.trim()).filter(Boolean)) {
     cron.schedule(expr, () => void digestOnce(), { timezone: config.TIMEZONE });
