@@ -6,3 +6,6 @@ dist/
 credentials.json
 data/
 *.log
+
+# Local editor/assistant tooling
+.claude/
