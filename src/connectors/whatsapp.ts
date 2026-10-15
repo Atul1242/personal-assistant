@@ -45,11 +45,19 @@ function decodeXml(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+// WhatsApp appends a counter line such as "✉ 2 unread messages" to its notifications
+const UNREAD_COUNTER = /\s*✉?\s*\d+\s+(unread|new)\s+messages?\s*$/iu;
+
+function cleanText(text: string): string {
+  return text.replace(UNREAD_COUNTER, "").trim();
+}
+
 /** Pulls the <text> lines out of a toast's XML payload: first is the chat name, the rest is the message. */
 function parseToast(xml: string): { chat: string; text: string } | undefined {
   const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((m) => decodeXml(m[1]).trim()).filter(Boolean);
   if (texts.length < 2) return undefined;
-  return { chat: texts[0], text: texts.slice(1).join(" ") };
+  const text = cleanText(texts.slice(1).join(" "));
+  return text ? { chat: texts[0], text } : undefined;
 }
 
 /** Reads WhatsApp notifications currently held by Windows. The live DB is locked, so we read a copy. */
@@ -124,11 +132,11 @@ export function startWhatsAppWatcher(): void {
 export function readWhatsAppSince(since: Date): InboxItem[] {
   captureWhatsApp();
   return readJson<StoredMessage[]>(paths.whatsappMessages, [])
-    .filter((m) => new Date(m.timestamp) >= since)
+    .filter((m) => new Date(m.timestamp) >= since && cleanText(m.text))
     .map((m) => ({
       source: "whatsapp" as const,
       from: m.chat,
-      text: m.text,
+      text: cleanText(m.text),
       timestamp: new Date(m.timestamp),
     }));
 }

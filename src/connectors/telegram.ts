@@ -55,8 +55,10 @@ export async function fetchTelegram(since: Date): Promise<InboxItem[]> {
   const client = await connectTelegram();
   try {
     const dialogs = await client.getDialogs({ limit: 100 });
+    // Skip the digest bot's own chat, or each digest would summarise the previous one
+    const digestBotId = config.TELEGRAM_BOT_TOKEN?.split(":")[0];
     const unread = dialogs.filter(
-      (d) => d.unreadCount > 0 && !d.archived && (d.isUser || d.isGroup),
+      (d) => d.unreadCount > 0 && !d.archived && (d.isUser || d.isGroup) && String(d.id) !== digestBotId,
     );
 
     const items: InboxItem[] = [];
