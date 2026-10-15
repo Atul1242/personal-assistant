@@ -1,0 +1,39 @@
+{
+  "name": "personal-assistant",
+  "version": "0.1.0",
+  "description": "Personal assistant that reads WhatsApp, Telegram, Gmail and Google Calendar and sends you AI summaries",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "digest": "tsx src/cli.ts digest",
+    "auth:google": "tsx src/cli.ts auth:google",
+    "auth:telegram": "tsx src/cli.ts auth:telegram",
+    "auth:whatsapp": "tsx src/cli.ts auth:whatsapp",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "Atul1242",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
+    "@google-cloud/local-auth": "^3.0.1",
+    "baileys": "^7.0.0-rc14",
+    "dotenv": "^18.0.8",
+    "googleapis": "^186.0.0",
+    "node-cron": "^4.6.0",
+    "pino": "^10.4.0",
+    "qrcode-terminal": "^0.12.0",
+    "telegram": "^2.26.22",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/node-cron": "^3.0.11",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

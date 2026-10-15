@@ -1,0 +1,8 @@
+node_modules/
+dist/
+
+# Secrets and local state - never commit these
+.env
+credentials.json
+data/
+*.log
