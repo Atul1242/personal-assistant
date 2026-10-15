@@ -24,7 +24,16 @@ export async function sendViaBot(text: string): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ chat_id: config.TELEGRAM_OWNER_CHAT_ID, text: part, disable_web_page_preview: true }),
     });
-    if (!res.ok) throw new Error(`Telegram bot send failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      let hint = "";
+      if (/bot can't send messages to the bot/i.test(body)) {
+        hint = " -> TELEGRAM_OWNER_CHAT_ID is a bot's id. Use your own account id (printed by `npm run auth:telegram`).";
+      } else if (/chat not found|bot was blocked|can't initiate/i.test(body)) {
+        hint = " -> Open your bot in Telegram and press Start (or unblock it), then try again.";
+      }
+      throw new Error(`Telegram bot send failed: ${res.status} ${body}${hint}`);
+    }
   }
 }
 

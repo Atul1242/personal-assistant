@@ -24,12 +24,17 @@ export async function authorizeGoogleInteractive(): Promise<void> {
       `Google OAuth client file not found at ${config.GOOGLE_CREDENTIALS_PATH}. See README -> "Google setup".`,
     );
   }
+  type ClientKey = { client_id: string; client_secret: string; redirect_uris?: string[] };
+  const keys = readJson<{ installed?: ClientKey; web?: ClientKey }>(config.GOOGLE_CREDENTIALS_PATH, {});
+  if (!keys.installed) {
+    throw new Error(
+      `${config.GOOGLE_CREDENTIALS_PATH} is a "${keys.web ? "Web application" : "unknown"}" OAuth client. ` +
+        `This app needs a "Desktop app" client: Google Cloud Console -> APIs & Services -> Credentials -> ` +
+        `Create credentials -> OAuth client ID -> Application type "Desktop app", then download its JSON as credentials.json.`,
+    );
+  }
   const client = await authenticate({ scopes: SCOPES, keyfilePath: config.GOOGLE_CREDENTIALS_PATH });
-  const keys = readJson<{ installed?: { client_id: string; client_secret: string }; web?: { client_id: string; client_secret: string } }>(
-    config.GOOGLE_CREDENTIALS_PATH,
-    {},
-  );
-  const key = keys.installed ?? keys.web;
+  const key = keys.installed;
   if (!key || !client.credentials.refresh_token) {
     throw new Error("Google did not return a refresh token. Remove the app at myaccount.google.com/permissions and retry.");
   }

@@ -20,9 +20,10 @@ async function main(): Promise<void> {
       break;
 
     case "auth:telegram": {
-      const session = await loginTelegramInteractive();
-      console.log("\nTelegram connected. Add this line to your .env (keep it secret, it is a login):\n");
-      console.log(`TELEGRAM_SESSION=${session}\n`);
+      const { session, userId } = await loginTelegramInteractive();
+      console.log("\nTelegram connected. Add these lines to your .env (keep the session secret, it is a login):\n");
+      console.log(`TELEGRAM_SESSION=${session}`);
+      console.log(`TELEGRAM_OWNER_CHAT_ID=${userId}\n`);
       break;
     }
 

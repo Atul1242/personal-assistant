@@ -107,6 +107,27 @@ function formatSchedule(events: CalendarItem[]): string {
   return `📅 Schedule\n${lines.join("\n")}`;
 }
 
+/**
+ * Every chat with its message count, rendered by code. Small models occasionally skip a chat in
+ * the summary, so this guarantees nothing is silently missed.
+ */
+function formatTally(items: InboxItem[]): string {
+  if (!items.length) return "";
+  const lines = (Object.keys(SOURCE_LABEL) as InboxItem["source"][]).flatMap((source) => {
+    const counts = new Map<string, number>();
+    for (const i of items.filter((i) => i.source === source)) {
+      const name = source === "gmail" ? i.from.replace(/\s*<.*>$/, "") : i.title ?? i.from;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    if (!counts.size) return [];
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const shown = sorted.slice(0, 8).map(([name, n]) => `${name} (${n})`);
+    const more = sorted.length > 8 ? `, +${sorted.length - 8} more` : "";
+    return [`${SOURCE_LABEL[source]}: ${shown.join(", ")}${more}`];
+  });
+  return `📊 ${items.length} new messages\n${lines.join("\n")}`;
+}
+
 function buildPrompt(data: Collected): string {
   const { text, dropped } = formatItems(data.items);
   return [
@@ -152,6 +173,9 @@ export async function summarize(data: Collected): Promise<string> {
 
   const schedule = formatSchedule(data.events);
   if (schedule) parts.push(schedule);
+
+  const tally = formatTally(data.items);
+  if (tally) parts.push(tally);
 
   if (data.errors.length) {
     parts.push(`⚠️ Couldn't read: ${data.errors.map((e) => e.split(":")[0]).join(", ")} (details in the console)`);

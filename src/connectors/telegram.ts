@@ -24,7 +24,7 @@ function makeClient(session: string): TelegramClient {
 }
 
 /** One-time interactive login. Prints a session string to paste into .env as TELEGRAM_SESSION. */
-export async function loginTelegramInteractive(): Promise<string> {
+export async function loginTelegramInteractive(): Promise<{ session: string; userId: string }> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const client = makeClient("");
   try {
@@ -34,14 +34,15 @@ export async function loginTelegramInteractive(): Promise<string> {
       password: (hint) => rl.question(`2FA password${hint ? ` (hint: ${hint})` : ""}: `),
       onError: (err) => console.error(err.message),
     });
-    return client.session.save() as unknown as string;
+    const me = await client.getMe();
+    return { session: client.session.save() as unknown as string, userId: String(me.id) };
   } finally {
     rl.close();
-    await client.disconnect();
+    await client.destroy();
   }
 }
 
-/** Connects with the saved session. Caller must disconnect. */
+/** Connects with the saved session. Caller must call destroy() (disconnect() leaves a ping loop running). */
 export async function connectTelegram(): Promise<TelegramClient> {
   if (!config.TELEGRAM_SESSION) throw new Error("Telegram not connected. Run: npm run auth:telegram");
   const client = makeClient(config.TELEGRAM_SESSION);
@@ -79,7 +80,7 @@ export async function fetchTelegram(since: Date): Promise<InboxItem[]> {
     }
     return items;
   } finally {
-    await client.disconnect();
+    await client.destroy();
   }
 }
 
@@ -89,6 +90,6 @@ export async function sendToSavedMessages(text: string): Promise<void> {
   try {
     await client.sendMessage("me", { message: text });
   } finally {
-    await client.disconnect();
+    await client.destroy();
   }
 }
