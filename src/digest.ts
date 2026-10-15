@@ -42,13 +42,18 @@ async function collect(since: Date): Promise<Collected> {
   return data;
 }
 
-/** Collects everything new since the last digest, summarises it with the local AI model and sends it to you. */
-export async function runDigest(): Promise<string> {
+/**
+ * Collects everything new since the last digest (or the last `sinceHours`), summarises it with
+ * the local AI model and sends it to you.
+ */
+export async function runDigest(opts: { sinceHours?: number } = {}): Promise<string> {
   const state = readJson<State>(paths.state, {});
   const startedAt = new Date();
-  const since = state.lastDigestAt
-    ? new Date(state.lastDigestAt)
-    : new Date(startedAt.getTime() - DEFAULT_LOOKBACK_HOURS * 3600_000);
+  const since = opts.sinceHours
+    ? new Date(startedAt.getTime() - opts.sinceHours * 3600_000)
+    : state.lastDigestAt
+      ? new Date(state.lastDigestAt)
+      : new Date(startedAt.getTime() - DEFAULT_LOOKBACK_HOURS * 3600_000);
 
   console.log(`[digest] collecting since ${since.toISOString()}`);
   const data = await collect(since);

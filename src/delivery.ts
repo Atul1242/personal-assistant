@@ -45,7 +45,8 @@ export async function deliver(digest: string): Promise<void> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   fs.writeFileSync(path.join(paths.digests, `${stamp}.txt`), digest);
 
-  const header = "🗂 Your assistant digest\n\n";
+  const when = new Date().toLocaleString("en-IN", { timeZone: config.TIMEZONE, dateStyle: "medium", timeStyle: "short" });
+  const header = `YOUR DIGEST - ${when}\n\n`;
   if (config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_OWNER_CHAT_ID) {
     await sendViaBot(header + digest);
   } else if (config.TELEGRAM_SESSION) {

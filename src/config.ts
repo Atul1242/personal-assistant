@@ -29,8 +29,9 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_OWNER_CHAT_ID: z.string().optional(),
 
-  DIGEST_SCHEDULE: z.string().default("0 8 * * *,0 13 * * *,0 20 * * *"),
+  DIGEST_SCHEDULE: z.string().default(""),
   TIMEZONE: z.string().default("Asia/Kolkata"),
+  USER_NAME: z.string().default(""),
 });
 
 // Treat empty strings in .env as "not set"
